@@ -1,0 +1,22 @@
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+dist/
+build/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.env
+.venv/
+venv/
+artifacts/
+
+# Local nilearn / surface data (downloaded at runtime)
+fsaverage5/
+nilearn_data/
+
+# Local test media and sidecar CSV (optional; use tests/fixtures/README)
+*.mp4
+*.wav
+events.csv
