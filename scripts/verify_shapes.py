@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Local smoke test: assert TRIBE dual-pass native output dims (8802 and 20484).
+Local smoke test: assert TRIBE single-pass native output dim is exactly 20484.
 
 Requires HF_TOKEN, tribev2 installed, and sufficient RAM. Not run in CI.
 """
@@ -48,12 +48,7 @@ def main() -> None:
     try:
         import pandas as pd
 
-        from neuroclaw.model.tribe_wrapper import (
-            CORTICAL_CONFIG_UPDATE,
-            SUBCORTICAL_CONFIG_UPDATE,
-            load_tribe,
-            normalize_prediction_to_ot,
-        )
+        from tribev2.demo_utils import TribeModel
     except ImportError as e:
         sys.exit(f"FAIL: import error: {e}")
 
@@ -85,28 +80,27 @@ def main() -> None:
 
     device = os.environ.get("NEUROCLAW_DEVICE", "cpu")
 
-    m1 = load_tribe(device=device, hf_token=os.environ.get("HF_TOKEN"), config_override=SUBCORTICAL_CONFIG_UPDATE)
+    print(f"Loading facebook/tribev2 on {device}...")
     try:
-        p1, _ = m1.predict(events=events)
-        o1 = normalize_prediction_to_ot(p1, 8802)
-        assert o1.shape[0] == 8802, o1.shape
+        model = TribeModel.from_pretrained("facebook/tribev2", device=device)
+        model.remove_empty_segments = False
+        preds, _ = model.predict(events=events)
+        if hasattr(preds, "values"):
+            preds = preds.values
+        arr = __import__("numpy").asarray(preds)
+        if arr.ndim == 3:
+            arr = arr[0]
+        if arr.ndim != 2:
+            sys.exit(f"FAIL: expected 2D preds, got {arr.shape}")
+        o20484 = 20484
+        if o20484 in (arr.shape[0], arr.shape[1]):
+            print("SHAPES OK (20484, T) — Ready for Destrieux slicing.")
+        else:
+            sys.exit(f"FAIL: Expected one axis == 20484, got shape {arr.shape}")
+    except Exception as e:
+        sys.exit(f"FAIL: {e}")
     finally:
-        del m1
         _clear_cache()
-
-    m2 = load_tribe(device=device, hf_token=os.environ.get("HF_TOKEN"), config_override=CORTICAL_CONFIG_UPDATE)
-    try:
-        p2, _ = m2.predict(events=events)
-        o2 = normalize_prediction_to_ot(p2, 20484)
-        assert o2.shape[0] == 20484, o2.shape
-    finally:
-        del m2
-        _clear_cache()
-
-    if o1.shape[1] != o2.shape[1]:
-        sys.exit(f"FAIL: time mismatch T_sub={o1.shape[1]} T_cort={o2.shape[1]}")
-
-    print("SHAPES OK", o1.shape, o2.shape)
 
 
 if __name__ == "__main__":

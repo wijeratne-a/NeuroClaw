@@ -1,1 +1,1 @@
-"""ROI masks and Marketing Four assembly."""
+"""ROI indices and Cortical Marketing Four (Destrieux fsaverage5)."""

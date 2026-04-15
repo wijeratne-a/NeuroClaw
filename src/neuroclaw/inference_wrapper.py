@@ -6,32 +6,25 @@ Stage 1 entry point for programmatic use; CLI lives in `neuroclaw.cli`.
 
 from __future__ import annotations
 
+from neuroclaw.atlas.cortical_marketing_four import build_cortical_marketing_four_roi_vertices
+from neuroclaw.model.single_pass import CorticalFourResult, run_cortical_marketing_four
 from neuroclaw.model.tribe_wrapper import (
     CORTICAL_DIM,
-    SUBCORTICAL_CONFIG_UPDATE,
-    SUBCORTICAL_DIM,
     TRIBEV2_PINNED_COMMIT,
-    VOXEL_DIM,
-    DualPassResult,
-    VoxelResult,
     load_tribe,
     normalize_prediction_to_ot,
     predict_native_ot,
-    predict_voxels,
     use_mock,
 )
 
 __all__ = [
     "CORTICAL_DIM",
-    "SUBCORTICAL_CONFIG_UPDATE",
-    "SUBCORTICAL_DIM",
     "TRIBEV2_PINNED_COMMIT",
-    "VOXEL_DIM",
-    "DualPassResult",
-    "VoxelResult",
+    "CorticalFourResult",
+    "build_cortical_marketing_four_roi_vertices",
     "load_tribe",
     "normalize_prediction_to_ot",
     "predict_native_ot",
-    "predict_voxels",
+    "run_cortical_marketing_four",
     "use_mock",
 ]

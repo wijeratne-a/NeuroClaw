@@ -1,4 +1,4 @@
-"""Validate tensor shape, z-scored stats, drift gates."""
+"""Validate Cortical Four tensor layout, z-scored stats, drift gates."""
 
 from __future__ import annotations
 
@@ -11,14 +11,11 @@ import zstandard
 from safetensors.numpy import load_file
 
 from neuroclaw.extractor.alignment import DriftStats
-from neuroclaw.model.tribe_wrapper import CORTICAL_DIM
 from neuroclaw.output.schema import (
-    DUAL_PASS_ROI_KEYS,
-    INFERENCE_LAYOUT_DUAL_PASS_AGGREGATED,
+    CORTICAL_FOUR_ROI_KEYS,
+    INFERENCE_LAYOUT_CORTICAL_MARKETING_FOUR,
     KEY_MODEL_METADATA,
     KEY_TIMESTAMPS,
-    KEY_VOXELS_ALL,
-    VOXEL_DIM,
 )
 
 
@@ -27,34 +24,6 @@ class ValidationResult:
     ok: bool
     errors: list[str]
     details: dict[str, Any]
-
-
-def validate_voxel_stats(voxels_all: np.ndarray) -> list[str]:
-    """
-    Sanity-check finite-scale predictions. TRIBE outputs are not globally z-scored;
-    subcortical columns may be zero-padded, so stats use the cortical slice only.
-    """
-    errs: list[str] = []
-    x = np.asarray(voxels_all, dtype=np.float64)
-    if x.ndim == 2 and x.shape[1] == VOXEL_DIM:
-        x = x[:, :CORTICAL_DIM]
-    m = float(np.mean(x))
-    s = float(np.std(x))
-    if abs(m) > 0.5:
-        errs.append(f"mean {m} exceeds |0.5| (cortical slice)")
-    if not (0.01 <= s <= 5.0):
-        errs.append(f"std {s} not in [0.01, 5.0] (cortical slice)")
-    return errs
-
-
-def validate_shape(voxels_all: np.ndarray) -> list[str]:
-    errs: list[str] = []
-    if voxels_all.ndim != 2:
-        errs.append(f"expected 2D voxels_all, got shape {voxels_all.shape}")
-        return errs
-    if voxels_all.shape[1] != VOXEL_DIM:
-        errs.append(f"expected dim 2 = {VOXEL_DIM}, got {voxels_all.shape[1]}")
-    return errs
 
 
 def validate_drift(stats: DriftStats) -> list[str]:
@@ -93,11 +62,11 @@ def _load_safetensors_from_zst(zst_path: str) -> dict[str, Any]:
         Path(tmp).unlink(missing_ok=True)
 
 
-def validate_dual_pass_tensors(
+def validate_cortical_four_tensors(
     tensors: dict[str, Any],
     drift_stats: DriftStats,
 ) -> ValidationResult:
-    """Validate in-memory tensors for ``dual_pass_aggregated`` layout."""
+    """Validate in-memory tensors for ``cortical_marketing_four`` layout."""
     errs: list[str] = []
 
     meta = _parse_embedded_metadata(tensors)
@@ -113,7 +82,7 @@ def validate_dual_pass_tensors(
         if tlen < 1:
             errs.append("timestamps length must be >= 1")
 
-    for k in DUAL_PASS_ROI_KEYS:
+    for k in CORTICAL_FOUR_ROI_KEYS:
         if k not in tensors:
             errs.append(f"missing ROI tensor {k!r}")
             continue
@@ -131,49 +100,31 @@ def validate_dual_pass_tensors(
         ok=len(errs) == 0,
         errors=errs,
         details={
-            "layout": "dual_pass_aggregated",
+            "layout": "cortical_marketing_four",
             "inference_layout": inference_layout,
-            "roi_keys": sorted(DUAL_PASS_ROI_KEYS),
+            "roi_keys": sorted(CORTICAL_FOUR_ROI_KEYS),
         },
     )
-
-
-def validate_dual_pass_artifact_zst(
-    zst_path: str,
-    drift_stats: DriftStats,
-) -> ValidationResult:
-    """Validate ROI-only dual-pass ``.safetensors.zst``."""
-    tensors = _load_safetensors_from_zst(zst_path)
-    return validate_dual_pass_tensors(tensors, drift_stats)
 
 
 def validate_artifact_zst(
     zst_path: str,
     drift_stats: DriftStats,
 ) -> ValidationResult:
-    """Decompress, load safetensors, run all gates (legacy grid or dual-pass ROI)."""
+    """Decompress, load safetensors, validate Cortical Four ROI layout."""
     tensors = _load_safetensors_from_zst(zst_path)
 
     meta = _parse_embedded_metadata(tensors)
     inf = meta.get("inference_layout", "unknown")
-    is_dual = inf == INFERENCE_LAYOUT_DUAL_PASS_AGGREGATED or (
-        KEY_VOXELS_ALL not in tensors and DUAL_PASS_ROI_KEYS.issubset(tensors.keys())
+    is_c4 = inf == INFERENCE_LAYOUT_CORTICAL_MARKETING_FOUR or CORTICAL_FOUR_ROI_KEYS.issubset(
+        tensors.keys()
     )
-    if is_dual:
-        return validate_dual_pass_tensors(tensors, drift_stats)
+    if is_c4:
+        return validate_cortical_four_tensors(tensors, drift_stats)
 
-    errs: list[str] = []
-    va = np.asarray(tensors[KEY_VOXELS_ALL])
-    errs.extend(validate_shape(va))
-    errs.extend(validate_voxel_stats(va))
-    errs.extend(validate_drift(drift_stats))
-
-    inference_layout = inf
-    if not inference_layout or inference_layout == "unknown":
-        inference_layout = meta.get("inference_layout", "unknown")
-
+    errs = [f"unknown artifact layout (expected {INFERENCE_LAYOUT_CORTICAL_MARKETING_FOUR})"]
     return ValidationResult(
-        ok=len(errs) == 0,
+        ok=False,
         errors=errs,
-        details={"shape": va.shape, "inference_layout": inference_layout},
+        details={"inference_layout": inf},
     )

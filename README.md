@@ -1,6 +1,6 @@
 # NeuroClaw
 
-Visual Voxel Micro-Engine — **Stage 1** multimodal extractor: decode video/audio/text, run [TRIBE v2](https://huggingface.co/facebook/tribev2) inference, export **29,286**-dim voxel tensors to `.safetensors.zst` with compliance metadata.
+Visual Voxel Micro-Engine — **Stage 1** multimodal extractor: decode video/audio/text, run [TRIBE v2](https://huggingface.co/facebook/tribev2) inference on the public **fsaverage5 (20,484-vertex)** cortical head, pool **four Destrieux ROIs** (FFA, vmPFC, IFG, Insula) to `.safetensors.zst` with compliance metadata and a `transcript.json` sidecar (faster-whisper, temp=0).
 
 See [NeuroClaw.md](NeuroClaw.md) for product context.
 

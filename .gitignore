@@ -11,6 +11,8 @@ build/
 .venv/
 venv/
 artifacts/
+.DS_Store
+*.ckpt
 
 # Local nilearn / surface data (downloaded at runtime)
 fsaverage5/

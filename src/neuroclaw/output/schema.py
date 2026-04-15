@@ -4,32 +4,29 @@ from __future__ import annotations
 
 from typing import Any
 
-VOXEL_DIM = 29286
 DTYPE = "float16"
 
-KEY_VOXELS_ALL = "voxels_all"
-KEY_VOXELS_M4 = "voxels_marketing4"
 KEY_TIMESTAMPS = "timestamps"
 KEY_MODEL_METADATA = "model_metadata"
 
-# Dual-pass aggregated ROI series (1-D float16 per key, length T)
-KEY_ROI_NACC = "NAcc"
-KEY_ROI_AMYGDALA = "Amygdala"
+# Cortical Marketing Four: ROI series (1-D float16 each, length T)
 KEY_ROI_FFA = "FFA"
-KEY_ROI_VPFC = "vmPFC"
+KEY_ROI_VMPFC = "vmPFC"
+KEY_ROI_IFG = "IFG"
+KEY_ROI_INSULA = "Insula"
 
-DUAL_PASS_ROI_KEYS = frozenset(
+CORTICAL_FOUR_ROI_KEYS = frozenset(
     {
-        KEY_ROI_NACC,
-        KEY_ROI_AMYGDALA,
         KEY_ROI_FFA,
-        KEY_ROI_VPFC,
+        KEY_ROI_VMPFC,
+        KEY_ROI_IFG,
+        KEY_ROI_INSULA,
     }
 )
 
-INFERENCE_LAYOUT_DUAL_PASS_AGGREGATED = "dual_pass_aggregated"
+INFERENCE_LAYOUT_CORTICAL_MARKETING_FOUR = "cortical_marketing_four"
 
-DUAL_PASS_EXTRA_METADATA_KEYS = frozenset({"tribev2_context"})
+CORTICAL_FOUR_EXTRA_METADATA_KEYS = frozenset({"tribev2_context"})
 
 MANDATORY_METADATA_KEYS = frozenset(
     {
@@ -41,7 +38,7 @@ MANDATORY_METADATA_KEYS = frozenset(
         "device",
         "dtype",
         "hemodynamic_offset_s",
-        "voxel_ordering",
+        "roi_ordering",
         "inference_layout",
         "atlas_versions",
         "drift_stats",
@@ -57,8 +54,8 @@ def validate_metadata(meta: dict[str, Any]) -> None:
     if missing:
         msg = f"model_metadata missing keys: {sorted(missing)}"
         raise ValueError(msg)
-    if meta.get("inference_layout") == INFERENCE_LAYOUT_DUAL_PASS_AGGREGATED:
-        missing2 = DUAL_PASS_EXTRA_METADATA_KEYS - set(meta.keys())
+    if meta.get("inference_layout") == INFERENCE_LAYOUT_CORTICAL_MARKETING_FOUR:
+        missing2 = CORTICAL_FOUR_EXTRA_METADATA_KEYS - set(meta.keys())
         if missing2:
-            msg = f"dual_pass_aggregated metadata missing keys: {sorted(missing2)}"
+            msg = f"cortical_marketing_four metadata missing keys: {sorted(missing2)}"
             raise ValueError(msg)

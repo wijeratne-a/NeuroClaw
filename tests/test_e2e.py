@@ -43,6 +43,16 @@ def test_cli_extract_smoke(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> N
 
     monkeypatch.setattr("neuroclaw.cli.process_video", fake_process_video)
     monkeypatch.setattr("neuroclaw.cli.extract_audio_features", fake_audio)
+    monkeypatch.setattr(
+        "neuroclaw.cli.transcribe_clip",
+        lambda *_a, **_k: {
+            "text": "",
+            "segments": [],
+            "language": "unknown",
+            "asr_model": "none",
+            "temperature": 0.0,
+        },
+    )
 
     dummy = tmp_path / "dummy.mp4"
     dummy.write_bytes(b"")

@@ -1,4 +1,4 @@
-"""neuroclaw-extract — multimodal ingestion and .safetensors.zst export."""
+"""neuroclaw-extract — multimodal ingestion and Cortical Four .safetensors.zst export."""
 
 from __future__ import annotations
 
@@ -13,9 +13,7 @@ import numpy as np
 import typer
 from rich.console import Console
 
-from neuroclaw.atlas.dual_pass_rois import build_dual_pass_roi_map
-from neuroclaw.atlas.marketing_four import assemble_marketing4
-from neuroclaw.atlas.masks import build_roi_masks, validate_indices
+from neuroclaw.atlas.cortical_marketing_four import build_cortical_marketing_four_roi_vertices
 from neuroclaw.compliance import TRANSPARENCY_NOTICE, validate_use_case
 from neuroclaw.config import load_settings
 from neuroclaw.extractor.alignment import assert_drift_limits, audit_drift
@@ -23,28 +21,22 @@ from neuroclaw.extractor.audio import extract_audio_features
 from neuroclaw.extractor.asr import transcribe_clip
 from neuroclaw.extractor.text import extract_ocr, ocr_events_to_dataframe_rows
 from neuroclaw.extractor.video import process_video
-from neuroclaw.model.dual_pass import run_dual_pass
 from neuroclaw.model.events_builder import _audio_filepath_for_tribe, build_events_df
 from neuroclaw.model.loader import staged_stage
-from neuroclaw.model.tribe_wrapper import (
-    TRIBEV2_PINNED_COMMIT,
-    load_tribe,
-    predict_voxels,
-    resolve_tribe_device,
-    use_mock,
-)
+from neuroclaw.model.single_pass import run_cortical_marketing_four
+from neuroclaw.model.tribe_wrapper import TRIBEV2_PINNED_COMMIT, load_tribe, resolve_tribe_device, use_mock
 from neuroclaw.output.manifest import build_manifest, write_manifest_sidecar
 from neuroclaw.output.schema import (
     DTYPE,
-    INFERENCE_LAYOUT_DUAL_PASS_AGGREGATED,
-    KEY_ROI_AMYGDALA,
+    INFERENCE_LAYOUT_CORTICAL_MARKETING_FOUR,
     KEY_ROI_FFA,
-    KEY_ROI_NACC,
-    KEY_ROI_VPFC,
+    KEY_ROI_IFG,
+    KEY_ROI_INSULA,
+    KEY_ROI_VMPFC,
     validate_metadata,
 )
 from neuroclaw.output.validator import validate_artifact_zst
-from neuroclaw.output.writer import write_artifact, write_dual_pass_artifact
+from neuroclaw.output.writer import write_cortical_four_artifact
 from neuroclaw.utils.adapter import RunContextAdapter
 from neuroclaw.utils.determinism import set_deterministic
 from neuroclaw.utils.git import get_git_sha
@@ -74,13 +66,19 @@ def extract(
     clip_id: Annotated[str | None, typer.Option("--clip-id", help="Override clip id")] = None,
     dual_pass: Annotated[
         bool,
-        typer.Option("--dual-pass", help="Dual-pass TRIBE (8802 subcortical + 20484 cortical) ROI export"),
+        typer.Option("--dual-pass", help="Deprecated: ignored; cortical-only pipeline runs"),
     ] = False,
 ) -> None:
-    """Extract multimodal features and write voxel tensors."""
+    """Extract multimodal features and write Cortical Marketing Four ROI tensors."""
     setup_json_logging()
     run_uuid = str(uuid.uuid4())
     log = RunContextAdapter(logging.getLogger("neuroclaw"), {"run_uuid": run_uuid})
+
+    if dual_pass:
+        console.print(
+            "[yellow]WARNING: --dual-pass is deprecated. TRIBE v2 open weights are cortical-only. "
+            "Falling back to single-pass Cortical Four extraction.[/yellow]"
+        )
 
     validate_use_case(use_case)
     use_case_norm = "commercial_content_optimization"
@@ -137,29 +135,27 @@ def extract(
             raise
         log.warning("ocr_failed", extra={"error": str(e), "run_uuid": run_uuid})
 
+    wav = Path(_audio_filepath_for_tribe(video_path))
+    transcript = transcribe_clip(wav, temperature=0.0)
+    extra_asr: list[dict] = []
+    tx = (transcript.get("text") or "").strip()
+    if tx:
+        extra_asr.append(
+            {
+                "type": "Text",
+                "start": 0.0,
+                "duration": duration_s,
+                "text": tx,
+                "context": "",
+                "filepath": "",
+                "channel": "text",
+            }
+        )
+
     tribe_device = resolve_tribe_device(os.environ.get("NEUROCLAW_DEVICE", "auto"))
     model = load_tribe(device=tribe_device, hf_token=settings.hf_token)
 
-    extra_dual: list[dict] = []
-    transcript: dict | None = None
-    if dual_pass:
-        wav = Path(_audio_filepath_for_tribe(video_path))
-        transcript = transcribe_clip(wav, temperature=0.0)
-        tx = (transcript.get("text") or "").strip()
-        if tx:
-            extra_dual.append(
-                {
-                    "type": "Text",
-                    "start": 0.0,
-                    "duration": duration_s,
-                    "text": tx,
-                    "context": "",
-                    "filepath": "",
-                    "channel": "text",
-                }
-            )
-
-    merged_extra = (list(ocr_rows) if ocr_rows else []) + extra_dual
+    merged_extra = (list(ocr_rows) if ocr_rows else []) + extra_asr
     events_df = build_events_df(
         model,
         video_path,
@@ -170,111 +166,25 @@ def extract(
     drift = audit_drift(bin_starts, audio.times_s, events_df)
     assert_drift_limits(drift)
 
-    if dual_pass:
-        roi_map = build_dual_pass_roi_map()
-        mock_o: tuple[int, int] | None = None
-        if use_mock():
-            from neuroclaw.model.tribe_wrapper import DUAL_PASS_CORTICAL_DIM, DUAL_PASS_SUBCORTICAL_DIM
-
-            mock_o = (DUAL_PASS_SUBCORTICAL_DIM, DUAL_PASS_CORTICAL_DIM)
-        with staged_stage("tribe_predict", settings, run_uuid=run_uuid):
-            dp = run_dual_pass(
-                events_df,
-                duration_s,
-                bin_starts,
-                roi_map,
-                settings,
-                run_uuid,
-                tribe_device,
-                settings.hf_token,
-                mock_native_o=mock_o,
-            )
-        t_bins = int(dp.nacc.shape[0])
-        tb = max(0, t_bins - 1)
-        region_map = {
-            KEY_ROI_NACC: [0, tb],
-            KEY_ROI_AMYGDALA: [0, tb],
-            KEY_ROI_FFA: [0, tb],
-            KEY_ROI_VPFC: [0, tb],
-        }
-        meta = {
-            "model_id": "facebook/tribev2",
-            "tribev2_version": os.environ.get("TRIBEV2_VERSION", "0.3.x"),
-            "created_utc": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
-            "run_uuid": run_uuid,
-            "git_sha": get_git_sha(),
-            "device": tribe_device,
-            "dtype": DTYPE,
-            "hemodynamic_offset_s": settings.HEMODYNAMIC_OFFSET_S,
-            "voxel_ordering": "dual_pass_sequential",
-            "inference_layout": INFERENCE_LAYOUT_DUAL_PASS_AGGREGATED,
-            "tribev2_context": {
-                "mask_mode": "dual_pass",
-                "roi_mapping_version": "harvard-oxford-sub-2mm_and_destrieux-fsaverage5",
-                "fwhm": 6.0,
-                "commit_hash": TRIBEV2_PINNED_COMMIT,
-            },
-            "atlas_versions": {
-                "subcortical": "harvard-oxford-via-tribev2",
-                "cortical": "destrieux-fsaverage5",
-                "mode": "dual_pass",
-            },
-            "drift_stats": {
-                "max_abs_drift_ms": drift.max_abs_drift_ms,
-                "p95_drift_ms": drift.p95_drift_ms,
-                "per_pair": drift.per_pair,
-            },
-            "transparency_label": TRANSPARENCY_NOTICE,
-            "use_case_audit": use_case_norm,
-            "region_map": region_map,
-            "ffa_bilateral_metadata": {"dual_pass": True, "note": "ROI series from dual-pass pooled vertices"},
-        }
-        validate_metadata(meta)
-        roi_series = {
-            KEY_ROI_NACC: dp.nacc,
-            KEY_ROI_AMYGDALA: dp.amygdala,
-            KEY_ROI_FFA: dp.ffa,
-            KEY_ROI_VPFC: dp.vmpfc,
-        }
-        paths = write_dual_pass_artifact(
-            clip_id=cid,
-            run_uuid=run_uuid,
-            out_root=out_root.resolve(),
-            roi_series=roi_series,
-            timestamps=dp.timestamps,
-            model_metadata=meta,
-            duration_s=duration_s,
-            transcript=transcript,
-        )
-        for p in paths:
-            vr = validate_artifact_zst(str(p), drift)
-            if not vr.ok:
-                log.error("validation_failed", extra={"errors": vr.errors, "run_uuid": run_uuid})
-                raise typer.Exit(code=1)
-            man = build_manifest(Path(p))
-            write_manifest_sidecar(man, cid, Path(p).parent)
-            console.print(f"[green]OK[/green] {p}")
-
-        console.print(f"run_uuid={run_uuid}")
-        return
+    roi_vertices, atlas_meta = build_cortical_marketing_four_roi_vertices()
 
     with staged_stage("tribe_predict", settings, run_uuid=run_uuid):
-        vox_result = predict_voxels(model, events_df, duration_s)
-    vox = vox_result.voxels
-    inference_layout = "cortical_only" if vox_result.cortical_only else "whole_brain"
+        cf = run_cortical_marketing_four(
+            model,
+            events_df,
+            duration_s,
+            bin_starts,
+            roi_vertices,
+        )
 
-    n = min(vox.shape[0], len(bin_starts))
-    vox = vox[:n]
-    bin_starts = bin_starts[:n]
-
-    roi = build_roi_masks()
-    idx_map = roi["indices"]
-    validate_indices(idx_map, cortical_only=vox_result.cortical_only)
-    m4, region_map, ffa_meta = assemble_marketing4(
-        np.asarray(vox, dtype=np.float32),
-        idx_map,
-        cortical_only=vox_result.cortical_only,
-    )
+    t_bins = int(cf.ffa.shape[0])
+    tb = max(0, t_bins - 1)
+    region_map = {
+        KEY_ROI_FFA: [0, tb],
+        KEY_ROI_VMPFC: [0, tb],
+        KEY_ROI_IFG: [0, tb],
+        KEY_ROI_INSULA: [0, tb],
+    }
 
     tribev2_ver = os.environ.get("TRIBEV2_VERSION", "0.3.x")
     meta = {
@@ -286,9 +196,18 @@ def extract(
         "device": tribe_device,
         "dtype": DTYPE,
         "hemodynamic_offset_s": settings.HEMODYNAMIC_OFFSET_S,
-        "voxel_ordering": "cortical_then_subcortical",
-        "inference_layout": inference_layout,
-        "atlas_versions": roi["atlas_versions"],
+        "roi_ordering": "roi_only_cortical_four",
+        "inference_layout": INFERENCE_LAYOUT_CORTICAL_MARKETING_FOUR,
+        "tribev2_context": {
+            "mask_mode": "fsaverage5_only",
+            "roi_mapping_version": "destrieux-fsaverage5",
+            "limitations": (
+                "Subcortical paths excluded; public best.ckpt contains fsaverage5 cortical surface only."
+            ),
+            "fwhm": 6.0,
+            "commit_hash": TRIBEV2_PINNED_COMMIT,
+        },
+        "atlas_versions": atlas_meta,
         "drift_stats": {
             "max_abs_drift_ms": drift.max_abs_drift_ms,
             "p95_drift_ms": drift.p95_drift_ms,
@@ -297,21 +216,26 @@ def extract(
         "transparency_label": TRANSPARENCY_NOTICE,
         "use_case_audit": use_case_norm,
         "region_map": region_map,
-        "ffa_bilateral_metadata": ffa_meta,
     }
     validate_metadata(meta)
 
-    paths = write_artifact(
+    roi_series = {
+        KEY_ROI_FFA: cf.ffa,
+        KEY_ROI_VMPFC: cf.vmpfc,
+        KEY_ROI_IFG: cf.ifg,
+        KEY_ROI_INSULA: cf.insula,
+    }
+
+    paths = write_cortical_four_artifact(
         clip_id=cid,
         run_uuid=run_uuid,
         out_root=out_root.resolve(),
-        voxels_all=np.asarray(vox, dtype=np.float16),
-        voxels_m4=m4,
-        timestamps=bin_starts.astype(np.float64),
+        roi_series=roi_series,
+        timestamps=cf.timestamps,
         model_metadata=meta,
         duration_s=duration_s,
+        transcript=transcript,
     )
-
     for p in paths:
         vr = validate_artifact_zst(str(p), drift)
         if not vr.ok:

@@ -1,51 +1,51 @@
-"""predict_voxels handles TRIBE cortical-only output."""
+"""TRIBE wrapper: normalize_prediction_to_ot and mock cortical-only output."""
 
 from __future__ import annotations
 
 import numpy as np
 import pandas as pd
+import pytest
 
-from neuroclaw.model.tribe_wrapper import (
-    CORTICAL_DIM,
-    SUBCORTICAL_DIM,
-    VOXEL_DIM,
-    VoxelResult,
-    predict_voxels,
-)
+from neuroclaw.model.tribe_wrapper import CORTICAL_DIM, normalize_prediction_to_ot
 
 
-class _CorticalOnlyModel:
-    def predict(self, events: pd.DataFrame | None = None, **kwargs):
-        n = 3
-        preds = np.ones((n, CORTICAL_DIM), dtype=np.float32)
-        return preds, []
+def test_normalize_prediction_to_ot_time_major() -> None:
+    t, o = 4, CORTICAL_DIM
+    arr = np.random.default_rng(0).standard_normal((t, o)).astype(np.float32)
+    out = normalize_prediction_to_ot(arr, CORTICAL_DIM)
+    assert out.shape == (o, t)
+    assert out.dtype == np.float16
 
 
-def test_predict_voxels_pads_cortical_only_to_voxel_dim():
-    m = _CorticalOnlyModel()
-    df = pd.DataFrame({"type": ["Video"], "start": [0.0], "duration": [5.0]})
-    out = predict_voxels(m, df, clip_duration_s=5.0)
-    assert isinstance(out, VoxelResult)
-    assert out.cortical_only is True
-    assert out.voxels.shape == (5, VOXEL_DIM)
-    assert out.voxels.dtype == np.float16
-    assert np.allclose(out.voxels[:, :CORTICAL_DIM], 1.0)
-    assert np.all(out.voxels[:, CORTICAL_DIM:] == 0)
+def test_normalize_prediction_to_ot_voxel_major() -> None:
+    o, t = CORTICAL_DIM, 3
+    arr = np.random.default_rng(1).standard_normal((o, t)).astype(np.float32)
+    out = normalize_prediction_to_ot(arr, CORTICAL_DIM)
+    assert out.shape == (o, t)
 
 
-class _WholeBrainModel:
-    def predict(self, events: pd.DataFrame | None = None, **kwargs):
-        n = 2
-        cort = np.ones((n, CORTICAL_DIM), dtype=np.float32)
-        sub = np.ones((n, SUBCORTICAL_DIM), dtype=np.float32) * 2.0
-        full = np.concatenate([cort, sub], axis=1)
-        return full, []
+def test_normalize_prediction_to_ot_wrong_dim_raises() -> None:
+    arr = np.zeros((10, 100), dtype=np.float32)
+    with pytest.raises(RuntimeError, match="Expected one axis"):
+        normalize_prediction_to_ot(arr, CORTICAL_DIM)
 
 
-def test_predict_voxels_whole_brain_sets_cortical_only_false():
-    m = _WholeBrainModel()
-    df = pd.DataFrame({"type": ["Video"], "start": [0.0], "duration": [2.0]})
-    out = predict_voxels(m, df, clip_duration_s=2.0)
-    assert out.cortical_only is False
-    assert out.voxels.shape == (2, VOXEL_DIM)
-    assert np.all(out.voxels[:, CORTICAL_DIM:] > 0)
+def test_mock_predict_returns_cortical_shape(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("NEUROCLAW_USE_MOCK_TRIBE", "1")
+    from neuroclaw.model.tribe_wrapper import load_tribe
+
+    m = load_tribe(device="cpu", hf_token=None)
+    df = pd.DataFrame(
+        {
+            "type": ["Video", "Audio"],
+            "start": [0.0, 0.0],
+            "duration": [5.0, 5.0],
+            "filepath": ["/tmp/x.mp4", "/tmp/x.wav"],
+            "text": ["", ""],
+            "context": ["", ""],
+        }
+    )
+    preds, _ = m.predict(events=df)
+    p = np.asarray(preds)
+    assert p.ndim == 2
+    assert p.shape[1] == CORTICAL_DIM

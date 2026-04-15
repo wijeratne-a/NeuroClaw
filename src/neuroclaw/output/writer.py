@@ -1,4 +1,4 @@
-"""Write .safetensors then zstd-compress to .safetensors.zst; optional 300s chunking."""
+"""Write ROI-only .safetensors then zstd-compress to .safetensors.zst; optional 300s chunking."""
 
 from __future__ import annotations
 
@@ -11,11 +11,9 @@ import zstandard
 from safetensors.numpy import save_file
 
 from neuroclaw.output.schema import (
-    DUAL_PASS_ROI_KEYS,
+    CORTICAL_FOUR_ROI_KEYS,
     KEY_MODEL_METADATA,
     KEY_TIMESTAMPS,
-    KEY_VOXELS_ALL,
-    KEY_VOXELS_M4,
 )
 
 
@@ -32,40 +30,6 @@ def _chunk_ranges(duration_s: float, chunk_s: float = 300.0) -> list[tuple[float
     return ranges
 
 
-def write_safetensors_zst(
-    voxels_all: np.ndarray,
-    voxels_m4: np.ndarray,
-    timestamps: np.ndarray,
-    model_metadata: dict[str, Any],
-    out_path: Path,
-    *,
-    compress_level: int = 3,
-) -> Path:
-    """
-    Save uncompressed .safetensors next to final path, compress, delete intermediate.
-    out_path should end with .safetensors.zst
-    """
-    out_path = Path(out_path)
-    if not str(out_path).endswith(".safetensors.zst"):
-        msg = "out_path must end with .safetensors.zst"
-        raise ValueError(msg)
-    tmp_safe = Path(str(out_path).removesuffix(".zst"))
-
-    meta_json = json.dumps(model_metadata, sort_keys=True)
-    tensors: dict[str, np.ndarray] = {
-        KEY_VOXELS_ALL: np.asarray(voxels_all, dtype=np.float16),
-        KEY_VOXELS_M4: np.asarray(voxels_m4, dtype=np.float16),
-        KEY_TIMESTAMPS: np.asarray(timestamps, dtype=np.float64),
-        KEY_MODEL_METADATA: np.frombuffer(meta_json.encode("utf-8"), dtype=np.uint8),
-    }
-    save_file(tensors, str(tmp_safe))
-    raw = tmp_safe.read_bytes()
-    cctx = zstandard.ZstdCompressor(level=compress_level)
-    out_path.write_bytes(cctx.compress(raw))
-    tmp_safe.unlink(missing_ok=True)
-    return out_path
-
-
 def write_transcript_sidecar(transcript: dict[str, Any], clip_id: str, out_dir: Path) -> Path:
     """Write ``{clip_id}_transcript.json`` next to artifacts."""
     out_dir = Path(out_dir)
@@ -75,7 +39,7 @@ def write_transcript_sidecar(transcript: dict[str, Any], clip_id: str, out_dir: 
     return p
 
 
-def write_dual_pass_safetensors_zst(
+def write_cortical_four_safetensors_zst(
     roi_series: dict[str, np.ndarray],
     timestamps: np.ndarray,
     model_metadata: dict[str, Any],
@@ -83,7 +47,7 @@ def write_dual_pass_safetensors_zst(
     *,
     compress_level: int = 3,
 ) -> Path:
-    """ROI-only safetensors (no ``voxels_all`` / ``voxels_marketing4``)."""
+    """Four 1D ROI float16 series + timestamps + embedded JSON metadata."""
     out_path = Path(out_path)
     if not str(out_path).endswith(".safetensors.zst"):
         msg = "out_path must end with .safetensors.zst"
@@ -91,9 +55,9 @@ def write_dual_pass_safetensors_zst(
     tmp_safe = Path(str(out_path).removesuffix(".zst"))
     meta_json = json.dumps(model_metadata, sort_keys=True)
     tensors: dict[str, np.ndarray] = {}
-    for k in DUAL_PASS_ROI_KEYS:
+    for k in CORTICAL_FOUR_ROI_KEYS:
         if k not in roi_series:
-            msg = f"dual-pass artifact missing ROI key {k!r}"
+            msg = f"cortical-four artifact missing ROI key {k!r}"
             raise ValueError(msg)
         tensors[k] = np.asarray(roi_series[k], dtype=np.float16).ravel()
     tensors[KEY_TIMESTAMPS] = np.asarray(timestamps, dtype=np.float64).ravel()
@@ -106,7 +70,7 @@ def write_dual_pass_safetensors_zst(
     return out_path
 
 
-def write_dual_pass_artifact(
+def write_cortical_four_artifact(
     *,
     clip_id: str,
     run_uuid: str,
@@ -118,7 +82,7 @@ def write_dual_pass_artifact(
     transcript: dict[str, Any] | None = None,
     chunk_seconds: float = 300.0,
 ) -> list[Path]:
-    """Write dual-pass ROI tensors + optional transcript JSON sidecar."""
+    """Write Cortical Four ROI tensors + optional transcript JSON sidecar (300s chunking preserved)."""
     out_root = Path(out_root)
     ranges = _chunk_ranges(duration_s, chunk_seconds)
     paths: list[Path] = []
@@ -133,7 +97,7 @@ def write_dual_pass_artifact(
         roi_sub = {k: np.asarray(v)[m] for k, v in roi_series.items()}
         p = subdir / f"{clip_id}_voxels.safetensors.zst"
         paths.append(
-            write_dual_pass_safetensors_zst(
+            write_cortical_four_safetensors_zst(
                 roi_sub,
                 timestamps[m],
                 model_metadata,
@@ -153,67 +117,8 @@ def write_dual_pass_artifact(
         roi_sub = {k: np.asarray(v)[m] for k, v in roi_series.items()}
         p = subdir / f"{clip_id}_voxels_part{i:02d}.safetensors.zst"
         paths.append(
-            write_dual_pass_safetensors_zst(
+            write_cortical_four_safetensors_zst(
                 roi_sub,
-                timestamps[m],
-                meta,
-                p,
-            )
-        )
-    return paths
-
-
-def write_artifact(
-    *,
-    clip_id: str,
-    run_uuid: str,
-    out_root: Path,
-    voxels_all: np.ndarray,
-    voxels_m4: np.ndarray,
-    timestamps: np.ndarray,
-    model_metadata: dict[str, Any],
-    duration_s: float,
-    chunk_seconds: float = 300.0,
-) -> list[Path]:
-    """
-    One file per clip for short-form; chunked paths for long-form (> chunk_seconds).
-    Path: artifacts/{clip_id}/{run_uuid}/{clip_id}_voxels.safetensors.zst (or _partNN).
-    """
-    out_root = Path(out_root)
-    ranges = _chunk_ranges(duration_s, chunk_seconds)
-    paths: list[Path] = []
-    if len(ranges) == 1:
-        t0, t1 = ranges[0]
-        m = (timestamps >= t0) & (timestamps < t1)
-        subdir = out_root / clip_id / run_uuid
-        subdir.mkdir(parents=True, exist_ok=True)
-        p = subdir / f"{clip_id}_voxels.safetensors.zst"
-        paths.append(
-            write_safetensors_zst(
-                voxels_all[m],
-                voxels_m4[m],
-                timestamps[m],
-                model_metadata,
-                p,
-            )
-        )
-        return paths
-
-    for i, (t0, t1) in enumerate(ranges):
-        m = (timestamps >= t0) & (timestamps < t1)
-        if not m.any():
-            continue
-        subdir = out_root / clip_id / run_uuid
-        subdir.mkdir(parents=True, exist_ok=True)
-        meta = dict(model_metadata)
-        meta["chunk_index"] = i
-        meta["chunk_t0_s"] = t0
-        meta["chunk_t1_s"] = t1
-        p = subdir / f"{clip_id}_voxels_part{i:02d}.safetensors.zst"
-        paths.append(
-            write_safetensors_zst(
-                voxels_all[m],
-                voxels_m4[m],
                 timestamps[m],
                 meta,
                 p,

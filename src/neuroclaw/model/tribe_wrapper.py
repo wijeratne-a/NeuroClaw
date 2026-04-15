@@ -1,11 +1,11 @@
-"""TRIBE v2 TribeModel — load, predict, native 29,286-dim output."""
+"""TRIBE v2 TribeModel — load, predict, native fsaverage5 cortical output (20484)."""
 
 from __future__ import annotations
 
 import logging
 import os
 import inspect
-from typing import Any, NamedTuple
+from typing import Any
 
 import numpy as np
 import pandas as pd
@@ -13,45 +13,8 @@ import pandas as pd
 logger = logging.getLogger("neuroclaw.model.tribe")
 
 CORTICAL_DIM = 20484
-SUBCORTICAL_DIM = 8802
-VOXEL_DIM = CORTICAL_DIM + SUBCORTICAL_DIM  # 29286
-
-DUAL_PASS_SUBCORTICAL_DIM = SUBCORTICAL_DIM  # 8802
-DUAL_PASS_CORTICAL_DIM = CORTICAL_DIM  # 20484
 
 TRIBEV2_PINNED_COMMIT = "72399081ed3f1040c4d996cefb2864a4c46f5b8e"
-
-# From tribev2/grids/run_subcortical.py — forces native 8802-dim subcortical output.
-SUBCORTICAL_CONFIG_UPDATE: dict[str, Any] = {
-    "data.neuro": {
-        "projection": {
-            "name": "MaskProjector",
-            "mask": "subcortical",
-            "=replace=": True,
-        }
-    }
-}
-
-# Default fsaverage5 cortical surface (no override).
-CORTICAL_CONFIG_UPDATE: dict[str, Any] = {}
-
-
-class VoxelResult(NamedTuple):
-    """TRIBE predict output; subcortical block may be zero-padded."""
-
-    voxels: np.ndarray  # (T, VOXEL_DIM) float16
-    cortical_only: bool  # True if model returned CORTICAL_DIM and subcortical was padded with zeros
-
-
-class DualPassResult(NamedTuple):
-    """Dual-pass ROI time series (bilateral NAcc pooled)."""
-
-    nacc: np.ndarray  # (T,) float16
-    amygdala: np.ndarray
-    ffa: np.ndarray
-    vmpfc: np.ndarray
-    timestamps: np.ndarray  # (T,) float64
-
 
 _TRIBE_AVAILABLE = False
 TribeModel: Any = None
@@ -149,7 +112,7 @@ def resolve_tribe_device(requested: str = "auto") -> str:
 
 
 class _MockTribeModel:
-    """Deterministic z-scored mock for CI / dev without tribev2 wheels."""
+    """Deterministic mock for CI / dev without tribev2 wheels. Output (T, 20484) cortical only."""
 
     mask_token = 0
 
@@ -177,22 +140,9 @@ class _MockTribeModel:
             dur = 10.0
         n = max(1, int(np.ceil(dur)))
         rng = np.random.default_rng(42)
-        mo = getattr(self, "mock_native_o", None)
-        if mo == DUAL_PASS_SUBCORTICAL_DIM:
-            raw = rng.standard_normal((n, DUAL_PASS_SUBCORTICAL_DIM))
-            preds = (raw / (raw.std(axis=1, keepdims=True) + 1e-8)).astype(np.float16)
-            return preds, []
-        if mo == DUAL_PASS_CORTICAL_DIM:
-            raw = rng.standard_normal((n, DUAL_PASS_CORTICAL_DIM))
-            preds = (raw / (raw.std(axis=1, keepdims=True) + 1e-8)).astype(np.float16)
-            return preds, []
-        cort = rng.standard_normal((n, CORTICAL_DIM))
-        sub = rng.standard_normal((n, SUBCORTICAL_DIM))
-        full = np.concatenate([cort, sub], axis=1)
-        full = (full - full.mean(axis=1, keepdims=True)) / (full.std(axis=1, keepdims=True) + 1e-8)
-        preds = full.astype(np.float16)
-        segments: list[Any] = []
-        return preds, segments
+        raw = rng.standard_normal((n, CORTICAL_DIM))
+        preds = (raw / (raw.std(axis=1, keepdims=True) + 1e-8)).astype(np.float16)
+        return preds, []
 
 
 def _extract_prediction_array(preds: Any) -> np.ndarray:
@@ -202,52 +152,19 @@ def _extract_prediction_array(preds: Any) -> np.ndarray:
     return np.asarray(preds)
 
 
-def _coerce_time_major_voxels(arr: np.ndarray) -> np.ndarray:
-    """
-    Ensure shape (T, O) for legacy VoxelResult path.
-    Tribev2 may return (T, O) or (O, T); normalize using known output sizes.
-    """
-    if arr.ndim == 1:
-        arr = arr.reshape(1, -1)
-    if arr.ndim == 3:
-        arr = arr[0]
-    if arr.ndim != 2:
-        msg = f"Expected 2D prediction array, got shape {arr.shape}"
-        raise RuntimeError(msg)
-    o_dims = (
-        CORTICAL_DIM,
-        VOXEL_DIM,
-        SUBCORTICAL_DIM,
-        DUAL_PASS_SUBCORTICAL_DIM,
-        DUAL_PASS_CORTICAL_DIM,
-    )
-    if arr.shape[-1] in o_dims:
-        return arr
-    if arr.shape[0] in o_dims:
-        return arr.T
-    # Heuristic: feature dimension is usually larger than timestep count for brain outputs
-    if arr.shape[0] > arr.shape[1]:
-        return arr.T
-    return arr
-
-
 def load_tribe(
     device: str = "auto",
     hf_token: str | None = None,
     *,
     config_override: dict[str, Any] | None = None,
-    mock_native_o: int | None = None,
 ) -> Any:
-    """Load TRIBE or mock."""
+    """Load TRIBE or mock (default checkpoint: fsaverage5 / 20484 cortical)."""
     resolved = resolve_tribe_device(device)
     if (device or "auto").strip().lower() in ("auto", ""):
         logger.info("tribe_device_resolved", extra={"resolved": resolved})
     if use_mock():
         logger.info("using_mock_tribe_model")
-        m = _MockTribeModel.from_pretrained("facebook/tribev2", device=resolved)
-        if mock_native_o is not None:
-            m.mock_native_o = mock_native_o  # type: ignore[attr-defined]
-        return m
+        return _MockTribeModel.from_pretrained("facebook/tribev2", device=resolved)
     assert TribeModel is not None
     feat_dev = neuralset_feature_device(resolved)
     merged_cfg = merge_tribe_config_update(feat_dev, config_override)
@@ -260,7 +177,6 @@ def load_tribe(
         extra={"neuralset_hf_device": feat_dev, "brain_device": resolved},
     )
     if hf_token:
-        # tribev2 API differs across versions; map token only when supported.
         sig = inspect.signature(TribeModel.from_pretrained)
         params = set(sig.parameters.keys())
         if "token" in params:
@@ -287,7 +203,7 @@ def load_tribe(
 
 def normalize_prediction_to_ot(preds: Any, expected_o: int) -> np.ndarray:
     """
-    Return float16 array shaped (O, T) where O == expected_o (voxels, time).
+    Return float16 array shaped (O, T) where O == expected_o (typically 20484).
     Handles xarray, batch dimension, and (T,O) vs (O,T) orientation.
     """
     arr = _extract_prediction_array(preds)
@@ -329,51 +245,9 @@ def predict_native_ot(
     expected_o: int,
 ) -> np.ndarray:
     """
-    Run model.predict; return (O, T) float16 with O == expected_o (8802 or 20484).
+    Run model.predict; return (O, T) float16 with O == expected_o (20484 for public checkpoint).
     """
     preds, _segments = model.predict(events=events_df)
     ot = normalize_prediction_to_ot(preds, expected_o)
     n_expect = max(1, int(np.ceil(clip_duration_s)))
     return _trim_pad_time_ot(ot, n_expect)
-
-
-def predict_voxels(
-    model: Any,
-    events_df: pd.DataFrame,
-    clip_duration_s: float,
-) -> VoxelResult:
-    """
-    Run model.predict(events=df); return VoxelResult with (n_bins, 29286) float16 voxels.
-
-    Sliding window / padding is handled inside tribev2; mock uses row count heuristic.
-    cortical_only is True when the checkpoint returned only cortical vertices and
-    the subcortical block was zero-padded to VOXEL_DIM.
-    """
-    preds, _segments = model.predict(events=events_df)
-    arr = _coerce_time_major_voxels(_extract_prediction_array(preds))
-    last = arr.shape[-1]
-    cortical_only = False
-    if last == CORTICAL_DIM:
-        cortical_only = True
-        # TRIBE v2 can return cortical vertices only; native NeuroClaw layout is
-        # cortical (20484) then subcortical (8802).
-        logger.warning(
-            "tribe_predict_cortical_only",
-            extra={
-                "shape": arr.shape,
-                "pad_subcortical_zeros": SUBCORTICAL_DIM,
-            },
-        )
-        sub = np.zeros((arr.shape[0], SUBCORTICAL_DIM), dtype=arr.dtype)
-        arr = np.concatenate([arr, sub], axis=1)
-    elif last != VOXEL_DIM:
-        msg = f"Expected last dim {VOXEL_DIM} (or cortical-only {CORTICAL_DIM}), got {arr.shape}"
-        raise RuntimeError(msg)
-    n_expect = max(1, int(np.ceil(clip_duration_s)))
-    if arr.shape[0] < n_expect:
-        pad = np.repeat(arr[-1:], n_expect - arr.shape[0], axis=0)
-        arr = np.concatenate([arr, pad], axis=0)
-    elif arr.shape[0] > n_expect:
-        arr = arr[:n_expect]
-    out = arr.astype(np.float16)
-    return VoxelResult(voxels=out, cortical_only=cortical_only)
