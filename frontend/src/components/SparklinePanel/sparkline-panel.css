@@ -4,10 +4,15 @@
   font-size: 0.9rem;
 }
 
-.sparkline-panel h3 {
+.sparkline-panel h3,
+.sparkline-panel .sparkline-title {
   margin: 0 0 0.5rem;
   font-size: 0.95rem;
   font-weight: 600;
+}
+
+.sparkline-panel .sparkline-title strong {
+  color: #e0e8ff;
 }
 
 .sparkline-panel .grid {

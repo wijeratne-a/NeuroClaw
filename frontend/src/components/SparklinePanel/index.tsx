@@ -15,13 +15,12 @@ export function SparklinePanel({
     return <div className="sparkline-panel empty">Load an artifact to see ROI sparklines.</div>
   }
 
-  const timeLabel = applyHemodynamicDelay
-    ? '30s window, HRF-delayed time axis'
-    : '30s window, aligned to video time (stimulus)'
-
   return (
     <div className="sparkline-panel">
-      <h3>ROI series ({timeLabel})</h3>
+      <h3 className="sparkline-title">
+        ROI series —{' '}
+        <strong>{applyHemodynamicDelay ? 'HRF-delayed' : 'Stimulus-aligned'}</strong> (30s window)
+      </h3>
       <div className="grid">
         <Sparkline
           artifact={artifact}

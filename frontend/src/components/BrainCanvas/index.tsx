@@ -11,7 +11,7 @@ export function BrainCanvas({
 }) {
   return (
     <div className="brain-canvas-wrap">
-      <div className="brain-label">Marketing Four (placeholder geometry)</div>
+      <div className="brain-label">Cortical Marketing Four — ROI glow (sample mesh)</div>
       <Canvas className="brain-canvas" camera={{ position: [0, 0, 7], fov: 42 }}>
         <color attach="background" args={['#0a0a0c']} />
         <ambientLight intensity={0.55} />

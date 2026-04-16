@@ -1,7 +1,10 @@
 .brain-canvas-wrap {
   position: relative;
   width: 100%;
-  min-height: 320px;
+  min-height: 280px;
+  max-height: 40vh;
+  min-width: 0;
+  overflow: hidden;
 }
 
 .brain-canvas-wrap .brain-label {
@@ -15,7 +18,8 @@
 }
 
 .brain-canvas {
-  height: 320px;
+  width: 100% !important;
+  height: min(320px, 40vh);
   border-radius: 8px;
   border: 1px solid #333;
 }

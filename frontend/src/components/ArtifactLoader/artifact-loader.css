@@ -3,6 +3,7 @@
   padding: 1rem;
   border: 1px solid #333;
   border-radius: 8px;
+  overflow-x: hidden;
 }
 
 .artifact-loader .hint {
@@ -24,6 +25,7 @@
   flex-wrap: wrap;
   gap: 1rem;
   align-items: flex-end;
+  min-width: 0;
 }
 
 .artifact-loader label {
@@ -31,6 +33,18 @@
   flex-direction: column;
   gap: 0.25rem;
   font-size: 0.85rem;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.artifact-loader input[type='file'] {
+  max-width: min(100%, 320px);
+}
+
+.artifact-loader .err,
+.artifact-loader .status,
+.artifact-loader .hint {
+  overflow-wrap: anywhere;
 }
 
 .artifact-loader .status {

@@ -22,3 +22,7 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Golden demo binaries (add locally; see README)
+public/demo/*.mp4
+public/demo/*.zst

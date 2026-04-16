@@ -2,6 +2,14 @@
   color-scheme: dark;
 }
 
-body {
+html,
+body,
+#root {
+  width: 100%;
   margin: 0;
+}
+
+body {
+  overflow-y: auto;
+  overflow-x: hidden;
 }

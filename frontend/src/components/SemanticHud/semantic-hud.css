@@ -1,0 +1,36 @@
+.semantic-hud {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  align-items: flex-end;
+  max-width: min(280px, 90vw);
+  pointer-events: none;
+}
+
+.semantic-hud .toast {
+  pointer-events: auto;
+  margin: 0;
+  padding: 0.5rem 0.65rem;
+  border-radius: 8px;
+  font-size: 0.78rem;
+  line-height: 1.35;
+  color: #f4f4f5;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.45);
+  animation: semanticToastIn 0.2s ease-out;
+}
+
+@keyframes semanticToastIn {
+  from {
+    opacity: 0;
+    transform: translateX(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
