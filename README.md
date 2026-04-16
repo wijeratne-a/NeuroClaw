@@ -36,6 +36,7 @@ neuroclaw-extract \
 
 ## Layout
 
+- `frontend/` — Phase 2 React + Vite viewer for `.safetensors.zst`, transcript, and video (`npm run dev` inside `frontend/`)
 - `src/neuroclaw/` — package (`neuroclaw-extract` entrypoint)
 - `src/neuroclaw/inference_wrapper.py` — programmatic TRIBE load/predict re-exports
 - `Dockerfile` — `dev-cpu` and `gpu-runtime` targets

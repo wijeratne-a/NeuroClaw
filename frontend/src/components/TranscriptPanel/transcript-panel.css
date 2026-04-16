@@ -1,0 +1,56 @@
+.transcript-panel {
+  max-height: 420px;
+  overflow: auto;
+  padding: 0.5rem;
+  border: 1px solid #333;
+  border-radius: 8px;
+}
+
+.transcript-panel h3 {
+  margin: 0 0 0.5rem;
+  font-size: 0.95rem;
+}
+
+.transcript-panel .empty {
+  color: #777;
+  font-size: 0.9rem;
+}
+
+.transcript-panel .segments {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.transcript-panel .seg {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  width: 100%;
+  text-align: left;
+  padding: 0.4rem 0.5rem;
+  margin-bottom: 0.25rem;
+  border: none;
+  border-radius: 6px;
+  background: #1a1a1e;
+  color: #ccc;
+  cursor: pointer;
+}
+
+.transcript-panel .seg:hover {
+  background: #252528;
+}
+
+.transcript-panel .seg.active {
+  background: #2a3a4a;
+  color: #fff;
+}
+
+.transcript-panel .time {
+  font-size: 0.7rem;
+  color: #888;
+}
+
+.transcript-panel .text {
+  font-size: 0.85rem;
+}

@@ -1,0 +1,24 @@
+.sparkline-panel.empty {
+  padding: 1rem;
+  color: #666;
+  font-size: 0.9rem;
+}
+
+.sparkline-panel h3 {
+  margin: 0 0 0.5rem;
+  font-size: 0.95rem;
+  font-weight: 600;
+}
+
+.sparkline-panel .grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.5rem;
+}
+
+.sparkline-canvas {
+  display: block;
+  width: 100%;
+  max-width: 360px;
+  border-radius: 6px;
+}

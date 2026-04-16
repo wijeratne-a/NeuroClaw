@@ -1,0 +1,18 @@
+.video-player {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.video-player .video-hint {
+  margin: 0;
+  font-size: 0.85rem;
+  color: #888;
+}
+
+.video-player .video-el {
+  width: 100%;
+  max-height: 420px;
+  background: #000;
+  border-radius: 8px;
+}

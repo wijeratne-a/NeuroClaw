@@ -1,0 +1,21 @@
+.brain-canvas-wrap {
+  position: relative;
+  width: 100%;
+  min-height: 320px;
+}
+
+.brain-canvas-wrap .brain-label {
+  position: absolute;
+  z-index: 1;
+  top: 8px;
+  left: 8px;
+  font-size: 0.75rem;
+  color: #888;
+  pointer-events: none;
+}
+
+.brain-canvas {
+  height: 320px;
+  border-radius: 8px;
+  border: 1px solid #333;
+}

@@ -1,0 +1,43 @@
+.artifact-loader {
+  margin-bottom: 1rem;
+  padding: 1rem;
+  border: 1px solid #333;
+  border-radius: 8px;
+}
+
+.artifact-loader .hint {
+  font-size: 0.9rem;
+  color: #aaa;
+}
+
+.artifact-loader .dropzone {
+  margin: 0.75rem 0;
+  padding: 2rem;
+  text-align: center;
+  border: 2px dashed #555;
+  border-radius: 8px;
+  color: #888;
+}
+
+.artifact-loader .row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  align-items: flex-end;
+}
+
+.artifact-loader label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  font-size: 0.85rem;
+}
+
+.artifact-loader .status {
+  margin-top: 0.5rem;
+}
+
+.artifact-loader .err {
+  margin-top: 0.5rem;
+  color: #f66;
+}
