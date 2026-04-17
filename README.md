@@ -37,6 +37,7 @@ neuroclaw-extract \
 ## Layout
 
 - `frontend/` — Phase 2 React + Vite viewer for `.safetensors.zst`, transcript, and video (`npm run dev` inside `frontend/`)
+- `scripts/export_brain.py` — exports Nilearn fsaverage5 pial surface to `frontend/public/brain.glb` (requires `trimesh`, `nilearn`)
 - `src/neuroclaw/` — package (`neuroclaw-extract` entrypoint)
 - `src/neuroclaw/inference_wrapper.py` — programmatic TRIBE load/predict re-exports
 - `Dockerfile` — `dev-cpu` and `gpu-runtime` targets

@@ -1,10 +1,10 @@
 import * as THREE from 'three'
 
 /**
- * MeshStandardMaterial patched with Gaussian ROI glow in world space (onBeforeCompile).
- * Works with skinned meshes (BrainStem) because we inject after Three's skinning pipeline.
+ * Near-clear glass shell + real-time ROI glow. Tuned for high transmission (see-through) with
+ * modest env/clearcoat cost vs full frosted stack.
  */
-export function createBrainGlowMaterial(): THREE.MeshStandardMaterial {
+export function createBrainGlowMaterial(): THREE.MeshPhysicalMaterial {
   const uniforms = {
     uCenter_ffa: { value: new THREE.Vector3() },
     uCenter_vmpfc: { value: new THREE.Vector3() },
@@ -14,14 +14,24 @@ export function createBrainGlowMaterial(): THREE.MeshStandardMaterial {
     uIntensity_vmpfc: { value: 0 },
     uIntensity_ifg: { value: 0 },
     uIntensity_insula: { value: 0 },
-    uGlowGain: { value: 1.35 },
+    uGlowGain: { value: 3.1 },
   }
 
-  const mat = new THREE.MeshStandardMaterial({
-    color: new THREE.Color(0x252530),
-    roughness: 0.48,
-    metalness: 0.12,
-    envMapIntensity: 0.85,
+  const mat = new THREE.MeshPhysicalMaterial({
+    color: '#f4f8ff',
+    roughness: 0.04,
+    metalness: 0,
+    transmission: 0.97,
+    thickness: 0.28,
+    ior: 1.52,
+    attenuationColor: new THREE.Color(0xffffff),
+    attenuationDistance: 4,
+    envMapIntensity: 0.42,
+    clearcoat: 0.12,
+    clearcoatRoughness: 0.05,
+    transparent: true,
+    side: THREE.DoubleSide,
+    depthWrite: true,
   })
 
   mat.onBeforeCompile = (shader) => {
@@ -61,14 +71,19 @@ export function createBrainGlowMaterial(): THREE.MeshStandardMaterial {
         `
         {
           vec3 g = vec3(0.0);
-          float rFfa = 11.0;
-          float rVm = 13.0;
-          float rIfg = 10.0;
-          float rIns = 9.0;
-          g += vec3(0.35, 0.75, 1.0) * neuroGlow(vNeuroGlowPos, uCenter_ffa, rFfa) * uIntensity_ffa;
-          g += vec3(1.0, 0.45, 0.75) * neuroGlow(vNeuroGlowPos, uCenter_vmpfc, rVm) * uIntensity_vmpfc;
-          g += vec3(1.0, 0.82, 0.35) * neuroGlow(vNeuroGlowPos, uCenter_ifg, rIfg) * uIntensity_ifg;
-          g += vec3(0.45, 1.0, 0.45) * neuroGlow(vNeuroGlowPos, uCenter_insula, rIns) * uIntensity_insula;
+          // Tight, local ROI kernels in world space so only target regions illuminate.
+          float rFfa = 0.24;
+          float rVm = 0.28;
+          float rIfg = 0.23;
+          float rIns = 0.22;
+          float iFfa = pow(clamp((uIntensity_ffa - 0.12) / 0.88, 0.0, 1.0), 1.35);
+          float iVm = pow(clamp((uIntensity_vmpfc - 0.12) / 0.88, 0.0, 1.0), 1.35);
+          float iIfg = pow(clamp((uIntensity_ifg - 0.12) / 0.88, 0.0, 1.0), 1.35);
+          float iIns = pow(clamp((uIntensity_insula - 0.12) / 0.88, 0.0, 1.0), 1.35);
+          g += vec3(0.2, 0.55, 1.0) * neuroGlow(vNeuroGlowPos, uCenter_ffa, rFfa) * iFfa;
+          g += vec3(0.25, 0.95, 0.45) * neuroGlow(vNeuroGlowPos, uCenter_vmpfc, rVm) * iVm;
+          g += vec3(0.72, 0.28, 1.0) * neuroGlow(vNeuroGlowPos, uCenter_ifg, rIfg) * iIfg;
+          g += vec3(1.0, 0.55, 0.12) * neuroGlow(vNeuroGlowPos, uCenter_insula, rIns) * iIns;
           outgoingLight += g * uGlowGain;
         }
         #include <opaque_fragment>

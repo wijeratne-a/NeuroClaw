@@ -1,7 +1,12 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import './App.css'
+import './components/BrainCanvas/brain-canvas.css'
 import { ArtifactLoader } from './components/ArtifactLoader'
-import { BrainCanvas } from './components/BrainCanvas'
+
+const BrainCanvas = lazy(async () => {
+  const mod = await import('./components/BrainCanvas')
+  return { default: mod.BrainCanvas }
+})
 import { SemanticHud } from './components/SemanticHud'
 import { SparklinePanel } from './components/SparklinePanel'
 import { TranscriptPanel } from './components/TranscriptPanel'
@@ -33,30 +38,34 @@ function App() {
     [parseArtifact],
   )
 
+  /** Defer demo downloads so first paint + lazy WebGL chunk aren’t blocked on large binaries. */
   useEffect(() => {
-    void (async () => {
-      const zst = await fetch('/demo/demo_voxels.safetensors.zst')
-      const tr = await fetch('/demo/demo_transcript.json')
-      const vid = await fetch('/demo/demo_clip.mp4')
-      if (!zst.ok || !tr.ok || !vid.ok) {
-        return
-      }
-      if (skipAutoDemoRef.current) {
-        return
-      }
-      const zstFile = new File([await zst.blob()], 'demo_voxels.safetensors.zst', {
-        type: 'application/octet-stream',
-      })
-      const transcriptText = await tr.text()
-      if (skipAutoDemoRef.current) {
-        return
-      }
-      parseArtifact([zstFile], transcriptText)
-      if (skipAutoDemoRef.current) {
-        return
-      }
-      setVideoUrl(URL.createObjectURL(await vid.blob()))
-    })()
+    const id = window.setTimeout(() => {
+      void (async () => {
+        const zst = await fetch('/demo/demo_voxels.safetensors.zst')
+        const tr = await fetch('/demo/demo_transcript.json')
+        const vid = await fetch('/demo/demo_clip.mp4')
+        if (!zst.ok || !tr.ok || !vid.ok) {
+          return
+        }
+        if (skipAutoDemoRef.current) {
+          return
+        }
+        const zstFile = new File([await zst.blob()], 'demo_voxels.safetensors.zst', {
+          type: 'application/octet-stream',
+        })
+        const transcriptText = await tr.text()
+        if (skipAutoDemoRef.current) {
+          return
+        }
+        parseArtifact([zstFile], transcriptText)
+        if (skipAutoDemoRef.current) {
+          return
+        }
+        setVideoUrl(URL.createObjectURL(await vid.blob()))
+      })()
+    }, 250)
+    return () => window.clearTimeout(id)
   }, [parseArtifact])
 
   const fallbackArtifact = useDemoMetrics ? demoArtifact : null
@@ -128,7 +137,9 @@ function App() {
         <div className="col main">
           <VideoPlayer ref={videoRef} videoUrl={videoUrl} />
           <div className="brain-row">
-            <BrainCanvas roiValuesRef={roiValuesRef} />
+            <Suspense fallback={<div className="brain-canvas-fallback" aria-hidden />}>
+              <BrainCanvas roiValuesRef={roiValuesRef} />
+            </Suspense>
             <SemanticHud roiValuesRef={roiValuesRef} />
           </div>
           <SparklinePanel

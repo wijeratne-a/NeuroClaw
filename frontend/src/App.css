@@ -57,6 +57,12 @@
   flex-direction: column;
   gap: 1rem;
   min-width: 0;
+  overflow: hidden;
+}
+
+.col.main .video-player,
+.col.main .brain-row {
+  flex-shrink: 0;
 }
 
 .col.side {

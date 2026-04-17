@@ -14,8 +14,10 @@ Build: `npm run build`, preview: `npm run preview`.
 
 ## Phase 3 visuals
 
-- **3D brain:** `public/brain.glb` — Khronos [BrainStem](https://github.com/KhronosGroup/glTF-Sample-Models/tree/main/2.0/BrainStem) glTF sample (anatomical mesh; ROI glow epicentres are **heuristic** fractional offsets in the mesh bounding box, not Destrieux-registered vertices).
-- **ROI glow:** Gaussian falloff in a patched `MeshStandardMaterial` fragment shader (`brainShaderMaterial.ts`).
+- **3D brain:** `public/brain.glb` — **fsaverage5** left+right pial surfaces, centered at the mesh center of mass. Regenerate from the repo root with:
+  `python scripts/export_brain.py`  
+  (requires `nilearn`, `trimesh`; writes `frontend/public/brain.glb`). ROI glow epicentres are **heuristic** fractional offsets in the mesh bounding box, not Destrieux-registered vertices.
+- **ROI glow:** Gaussian falloff in a patched material fragment shader (`brainShaderMaterial.ts`).
 - **Semantic HUD:** Threshold toasts on normalized ROI values (marketing copy; not clinical claims).
 - **Dev mock metrics:** append `?dev=1` to the URL to show the old 1Hz synthetic series toggle.
 
